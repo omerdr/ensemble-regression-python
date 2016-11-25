@@ -1,13 +1,14 @@
 import errno
 import numpy as np
 import scipy.io as sio
-from sklearn import cross_validation
+import time
+from sklearn import model_selection
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.ensemble.base import _partition_estimators
 from sklearn.externals.joblib import Parallel, delayed
 import types
 
-from regression_datasets import DatasetFactory
+from regression_datasets import DatasetFactory, dataset_list
 
 
 def _parallel_helper(obj, methodname, *args, **kwargs):
@@ -39,38 +40,42 @@ def forest_regressor_predict(self, X):
 
 
 def main():
-    # Create the RandomForest regressor, and replace its predict function with
-    # a predict that saves the individual regressor outputs to a member variable all_y_hat
-    regr = RandomForestRegressor(n_estimators=50)
-    regr.predict = types.MethodType(forest_regressor_predict, regr)
+    for name, func in dataset_list.items():  # a.items():  #
+        print(name)
+        dataset = func()
+        Xtrain, X, ytrain, y = model_selection.train_test_split(
+                                        dataset.data,dataset.target,train_size=200,random_state=0)
 
-    # Load Dataset
-    #ds = DatasetFactory.friedman1(n_samples=20200)
-    #ds = DatasetFactory.friedman2(n_samples=20200)
-    ds = DatasetFactory.friedman3(n_samples=20200)
-    Xtrain, X, ytrain, y = cross_validation.train_test_split(
-                                    ds.data,ds.target,train_size=200,random_state=0)
+        # Create the RandomForest regressor, and replace its predict function with
+        # a predict that saves the individual regressor outputs to a member variable all_y_hat
+        regr = RandomForestRegressor(n_estimators=50)
+        regr.predict = types.MethodType(forest_regressor_predict, regr)
 
-    # Fit the model
-    regr.fit(Xtrain, ytrain)
-    yhat = regr.predict(X)
-    Z = np.array(regr.all_y_hat)
+        # Fit the model
+        regr.fit(Xtrain, ytrain)
+        yhat = regr.predict(X)
+        Z = np.array(regr.all_y_hat)
 
-    # Save results
-    sio.savemat('RandomForestTest_Friedman3.mat', {
-        'names': str(regr.estimators_),
-        'Z': Z, 'y': y,
-        'y_RandomForest': yhat,
-        # 'Ztrain': Z_train, # NOTE: Combing DecisionTrees is unsupervised by nature
-        #'ytrain': ytrain,
-        'samples_per_regressor': 200,
-        'regressor_samples_overlap': 200,
-        'Ey': np.mean(y),
-        'Ey2': np.mean(y ** 2),
-        'Description': 'Random Forest Ensemble Test (Friedman #3)'
-    })
+        # Save results
+        Description = "Random Forest Ensemble (%s)\n%s Generated with %s regressors:" % \
+                      (name, regr, regr.n_estimators)
+
+        ################################################################################################################
+        sio.savemat('./final/rf/{0}.mat'.format(name), {
+            'names': str(regr.estimators_),
+            'Z': Z, 'y': y,
+            'y_RandomForest': yhat,
+            # 'Ztrain': Z_train, # NOTE: Combing DecisionTrees is unsupervised by nature
+            #'ytrain': ytrain,
+            'samples_per_regressor': 200,
+            'regressor_samples_overlap': 200,
+            'Ey': np.mean(y),
+            'Ey2': np.mean(y ** 2),
+            'Description': Description
+        })
 
 if __name__ == "__main__":
+    start = time.time()
     try:
         main()
         print('Done.')
@@ -79,3 +84,5 @@ if __name__ == "__main__":
     except IOError as e:  # catch closing of pipes
         if e.errno != errno.EPIPE:
             raise e
+    finally:
+        print('Total running time: {0}'.format(time.time() - start))

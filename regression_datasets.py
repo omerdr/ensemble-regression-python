@@ -20,6 +20,10 @@ FLIGHTS_DATASET_FILE = r'/home/omer/Downloads/Datasets/misc/flights/2008-preproc
 BLOCKBUSTER_DATASET_FILE = r'/home/omer/Downloads/Datasets/misc/blockbuster-ratings/blockbuster-preprocessed.csv'
 BASKETBALL_DATASET_FILE = r'/home/omer/Downloads/Datasets/misc/basketball/basketball-preprocessed-50k.tsv'
 
+def date2num(s):
+    d = s.decode('utf-8') if type(s) is bytes else s
+    return datestr2num(d)
+
 class String2UID:
     def __init__(self):
         self._mapping = dict()
@@ -28,14 +32,15 @@ class String2UID:
     def __call__(self, *args):
         if len(args) != 1:
             raise ValueError
-        if args[0] not in self._mapping.keys():
-            self._mapping[args[0]] = self._last
+        key = args[0].decode('utf-8') if type(args[0]) is bytes else args[0]
+        if key not in self._mapping.keys():
+            self._mapping[key] = self._last
             self._last += 1
 
-        return self._mapping[args[0]]
+        return self._mapping[key]
 
     def reverse_lookup(self, id):
-        for k, v in self._mapping.iteritems():
+        for k, v in self._mapping.items():
             if v == id:
                 return k
         raise LookupError
@@ -43,7 +48,8 @@ class String2UID:
 
 def dateconv(s):
     """ date conversion helper. Format %Y-%m-%d """
-    return calendar.timegm(datetime.strptime(s,'%Y-%m-%d').timetuple())
+    d = s.decode('utf-8') if type(s) is bytes else s
+    return calendar.timegm(datetime.strptime(d,'%Y-%m-%d').timetuple())
 
 
 # dict for all methods that generate datasets
@@ -141,7 +147,7 @@ class DatasetFactory:
     def bike_sharing():
         """ Dataset about bike sharing service statistics """
         csvdata = np.loadtxt(os.path.join(UCI_DATASETS_BASE_DIR, 'Bike-Sharing', 'hour.csv'),
-                             delimiter=',', skiprows=1, converters={1: datestr2num})
+                             delimiter=',', skiprows=1, converters={1: date2num})
         (data, target) = csvdata[:, 0:-1], csvdata[:, -1]
         return DatasetFactory.Dataset(data=data, target=target)
 
@@ -182,6 +188,7 @@ class DatasetFactory:
     def SP500():
         """
         Historical Data for S&P 500 Stocks
+        Task is: given 5 days of information about a stock, what will the price be on the 6th day.
         A file in Historical Data Format contains one record per line of text corresponding to the data for
         a single date. The record is arranged into fields representing respectively the
         Ticker, Date, Open, High, Low, Close, Volume for the day.
@@ -215,15 +222,34 @@ class DatasetFactory:
     @staticmethod
     def nasdaq_stocks(tick):
         """
-        Historical quotes for NASDAQ-traded companies
+        Historical quotes for NASDAQ-traded companies.
+        Task is: given 5 days of information about a stock, what will the price be on the 6th day?
+        The information includes:
+        Date,Open,High,Low,Close,Volume,Adj Close for each of the 5 days (35 features)
         :param tick: ticker label (e.g. 'GOOGL', 'AAPL', etc.)
         """
         csvdata = np.loadtxt(
                 os.path.join(FINANCE_DATASETS_DIR, r'NASDAQ_from_my_github_stocks','nasdaq_split_mat', tick + '.csv'),
-                skiprows=1, delimiter=',')
+                delimiter=',')  # skiprows=1,
 
-        (data, target) = csvdata[:, 0:-1], csvdata[:, -1]
+        (data, target) = csvdata[:, :-1], csvdata[:, -1]
         return DatasetFactory.Dataset(data=data, target=target)
+
+    @staticmethod
+    @dataset_generator
+    def nasdaq_selected():
+        """
+        returns aggregated data for AAPL, GOOGL, NFLX, MSFT, CSCO, FB, MRVL, INTC, NVDA, SPLS
+                                    MU, AMAT, HBAN, ATVI, SIRI, XIV, QQQ, DCIX, NUAN, AMZN, FTR, GRPN
+        """
+        ret = DatasetFactory.nasdaq_stocks('AAPL')
+        for tick in ('GOOGL', 'NFLX', 'MSFT', 'CSCO', 'FB', 'MRVL', 'INTC', 'NVDA', 'SPLS',
+                     'MU', 'AMAT', 'HBAN', 'ATVI', 'SIRI', 'XIV', 'QQQ', 'DCIX', 'NUAN', 'AMZN', 'FTR', 'GRPN'):
+            ds = DatasetFactory.nasdaq_stocks(tick)
+            ret.data = np.concatenate((ret.data,ds.data))
+            ret.target = np.concatenate((ret.target, ds.target))
+        return ret
+
 
     @staticmethod
     @dataset_generator
@@ -257,8 +283,7 @@ class DatasetFactory:
             converters={4: sex_uid, 10:cabin_uid, 11:embarked_uid},
             usecols=(0,1,2,4,5,6,7,9,11))  # not using name, cabin and ticket
 
-        cols = range(csvdata.shape[1])
-        cols.remove(4)
+        cols = [i for i in range(csvdata.shape[1]) if i != 4]
         (data, target) = csvdata[:, cols], csvdata[:, 4]  # age is now the 4th field (since name was ignored)
 
         # return uid as inner_object so that the user can go back from stock index to the stock
@@ -273,7 +298,8 @@ class DatasetFactory:
         http://stat-computing.org/dataexpo/2009/the-data.html
         :param origin_airport: ATL,JFK,SFO,BOS for only using data from that specific airport. None for all origins.
         """
-        def localminute(s):  # helper to convert HHMM to number (minute number in the day - 0-24*60).
+        def localminute(o):  # helper to convert HHMM to number (minute number in the day - 0-24*60).
+            s = o.decode('utf-8') if type(o) is bytes else o
             if s == '2400':
                 return 24*60
             d = datetime.strptime(s.zfill(4),'%H%M')  # zfill adds missing 0's
