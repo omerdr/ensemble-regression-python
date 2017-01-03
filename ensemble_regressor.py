@@ -1,5 +1,6 @@
 from __future__ import print_function
 import sys
+import traceback
 from threading import Lock
 
 if sys.version_info >= (3, 0):
@@ -44,6 +45,7 @@ class EnsembleRegressor(BaseEstimator, MetaEstimatorMixin, RegressorMixin):
 
         self._ensemble_nn_large = [MLPRegressor(nb_epoch=500) for _ in range(10)]  # 5 Multi Layer Perceptrons in the ensemble
         self._ensemble_nn_xlarge = [MLPRegressor(nb_epoch=500) for _ in range(30)]  # 5 Multi Layer Perceptrons in the ensemble
+        self._ensemble_nn_different = [MLPRegressor(num_hidden_units=(i+5), nb_epoch=500) for i in range(10)]  # 5 Different MLPs in the ensemble
 
         self._ensemble_ridge_regression = [
             linear_model.Ridge(alpha=alpha, fit_intercept=True, normalize=True)
@@ -105,6 +107,8 @@ class EnsembleRegressor(BaseEstimator, MetaEstimatorMixin, RegressorMixin):
             self.regressors = self._ensemble_nn_large
         elif type == 'mlp_xlarge':
             self.regressors = self._ensemble_nn_xlarge
+        elif type == 'mlp_different':
+            self.regressors = self._ensemble_nn_different
         elif type == 'ridge':
             self.regressors = self._ensemble_ridge_regression
         elif type == 'auto_large':
@@ -197,9 +201,11 @@ class EnsembleRegressor(BaseEstimator, MetaEstimatorMixin, RegressorMixin):
         for i, regr in enumerate(self.regressors):
             try:
                 s[i] = regr.score(X_test, y_test)
-            except:
-                print(regr)
-                raise
+            except Exception as e:
+                print('Exception caught while collecting results from {0}'.format(str(regr)), file=sys.stderr)
+                print('{0}'.format(e), file=sys.stderr)
+                traceback.print_tb(e.__traceback__)
+                raise e
         return s
 
     def mean_squared_error(self, X_test, y_test):

@@ -40,7 +40,7 @@ def make_large_ensemble(dataset, mat_filename='large_ensemble.mat'):
     """
 
     # Init
-    ensemble_type = 'mlp_large'  # 'auto_large'  ######################################################################
+    ensemble_type = 'auto_large'  # 'mlp_different'  # 'mlp_large'  ######################################################################
     (n_samples,n_features) = dataset.data.shape
 
     ensemble = EnsembleRegressor(verbose=False, type=ensemble_type)
@@ -420,6 +420,7 @@ def main():
     # a['ratings_of_sweets'] = dataset_list['ratings_of_sweets']
     # a['affairs'] = dataset_list['affairs']
     # a['flights_BOS'] = dataset_list['flights_BOS']
+    # a['blog_feedback'] = dataset_list['blog_feedback']
     results_list = list()
     keys = list()
     with ProcessPoolExecutor() as pool:
@@ -431,37 +432,39 @@ def main():
             if len(dataset.target) < 4000:
                 continue
 
-            try:
-                ########################################################################################################
-                # future = pool.submit(submit_one, dataset.data, dataset.target, 'final/misc/%s.mat' % name)
-                future = pool.submit(submit_one, dataset.data, dataset.target, 'final/mlp/%s.mat' % name)
-                future_to_name_mapping[future] = name
-            except Exception as e:
-                print('Exception while submitting {0}'.format(name), file=sys.stderr)
-                traceback.print_tb(e.__traceback__)
+            for i in range(1, 21):
+                try:
+                    ########################################################################################################
+                    future = pool.submit(submit_one, dataset.data, dataset.target, 'final/repeat/misc/%s_%d.mat' % (name, i))
+                    # future = pool.submit(submit_one, dataset.data, dataset.target, 'final/mlp/%s.mat' % name)
+                    # future = pool.submit(submit_one, dataset.data, dataset.target, 'final/mlp_different/%s.mat' % name)
+                    future_to_name_mapping[future] = '{0}_{1}'.format(name,i)
+                except Exception as e:
+                    print('Exception while submitting {0}_{1}'.format(name,i), file=sys.stderr)
+                    traceback.print_tb(e.__traceback__)
 
         print('BEFORE')
         for future in as_completed(future_to_name_mapping):
-            name = future_to_name_mapping[future]
-            keys.append(name)
-            print('{0} now completed. Already done {1}'.format(name, keys))
+            namestr = future_to_name_mapping[future]
+            keys.append(namestr)
+            print('{0} now completed. Already done {1}'.format(namestr, keys))
             try:
                 res = future.result()
                 cur_df = pd.DataFrame(res)
                 results_list.append(cur_df)
                 print(cur_df)
             except Exception as e:
-                print('Exception caught while collecting results from {0}'.format(name), file=sys.stderr)
+                print('Exception caught while collecting results from {0}'.format(namestr), file=sys.stderr)
                 traceback.print_tb(e.__traceback__)
 
         print('AFTER')
-            # reg_results = pd.DataFrame(make_large_ensemble(dataset, 'final/misc/%s.mat' % name))
+            # reg_results = pd.DataFrame(make_large_ensemble(dataset, 'final/misc/%s.mat' % namestr))
             # results_list.append(reg_results)
-            # keys.append(name)
+            # keys.append(namestr)
             # print(reg_results)
 
         results_df = pd.concat(results_list, keys=keys)
-        results_df.to_csv('final/mlp/results.csv')  # ##################################################################
+        results_df.to_csv('final/repeat/misc/results.csv')  # ##################################################################
         pd.options.display.float_format = '{:.2f}'.format
         print(results_df.pivot_table(values=['MSE_train','MSE_val'], index=['i'], aggfunc=[np.mean,np.min,np.max]))
         print(results_df.reset_index(inplace=False).pivot_table(values=['MSE_train', 'MSE_val'], index='level_0',

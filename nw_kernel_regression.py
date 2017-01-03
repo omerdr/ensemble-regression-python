@@ -8,7 +8,7 @@ import numpy as np
 
 from sklearn.metrics.pairwise import pairwise_kernels
 from sklearn.base import BaseEstimator, RegressorMixin
-
+import gc
 
 class KernelRegression(BaseEstimator, RegressorMixin):
     """Nadaraya-Watson kernel regression with automatic bandwidth selection.
@@ -81,7 +81,13 @@ class KernelRegression(BaseEstimator, RegressorMixin):
             The predicted target value.
         """
         K = pairwise_kernels(self.X, X, metric=self.kernel, gamma=self.gamma)
-        return (K * self.y[:, None]).sum(axis=0) / K.sum(axis=0)
+        try:
+            ret = (K * self.y[:, None]).sum(axis=0) / K.sum(axis=0)
+        except MemoryError:
+            gc.collect()  # gc and retry
+            ret = (K * self.y[:, None]).sum(axis=0) / K.sum(axis=0)
+
+        return ret
 
     def _optimize_gamma(self, gamma_values):
         # Select specific value of gamma from the range of given gamma_values
